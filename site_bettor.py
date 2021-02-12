@@ -7,3 +7,6 @@ class SiteBettor(ABC):
 
     def bet(self):
         pass
+
+    def close(self):
+        pass
