@@ -26,6 +26,12 @@ def parse_1x2_button(row):
             'x': SingleBetInfo(*bets[4:8]),
             '2': SingleBetInfo(*bets[8:12])}
 
+def parse_12_button(row):
+    # Find bet price and size
+    bet_buttons = row.find('td', class_='coupon-runners').find_all('span')
+    bets = [button.text if button.text[0] != '€' else button.text[1:] for button in bet_buttons]
+    return {'1': SingleBetInfo(*bets[:4]),
+            '2': SingleBetInfo(*bets[4:8])}
 
 def parse_uo_button(row):
     # Find bet price and size
@@ -53,6 +59,7 @@ def parse_uo4_button(row):
 
 def parse_row(row, feature):
     feature_bets_parsers = {'1x2': parse_1x2_button,
+                            '12': parse_12_button,
                             'uo1.5': parse_uo1_button,
                             'uo2.5': parse_uo2_button,
                             'uo3.5': parse_uo3_button,
@@ -119,7 +126,9 @@ def parse_content(page, sport, feature, driver_index, url, loading_period=2):
     return data
 
 def sport_url(sport):
-    sports_path = {'calcio': 'calcio-scommesse-1/'}
+    sports_path = {'calcio': 'calcio-scommesse-1/',
+                   'tennis': 'tennis-scommesse-2/',
+                   'basket': 'basket-scommesse-7522/'}
     return 'https://www.betfair.it/exchange/plus/it/' + sports_path[sport]
 
 # driver.find_element_by_xpath("//span[contains(text(), 'Under/Over 1.5 Goal')]").click()
@@ -189,21 +198,22 @@ class BetfairBettor(SiteBettor):
             return len(drivers[self.driver_id][0].find_element_by_class_name(
                 "coupon-page-navigation__bullets").find_elements_by_tag_name('li'))
         except selenium.common.exceptions.NoSuchElementException:
-            print('N. pages not found!')
+            # print('N. pages not found!')
             return 1
 
 # --- la vita in un giorno ---
-    def get_data(self):
+    def get_data(self, update_n_pages=False):
         global drivers
         data = {}
-        self.n_pages = self.number_of_pages()
+        if update_n_pages:
+            self.n_pages = self.number_of_pages()
         n_pages = min(self.max_pages, self.n_pages)
         n_drivers = len(drivers[self.driver_id])
         # Get and parse the data
         for stage_id in range(ceil(n_pages / n_drivers)):
             # Run n_drivers self.parse_content togheter in order to reduce wasted time
             futures = [self.client.submit(parse_content, # function
-                                          i + n_drivers * stage_id, # page
+                                          i + n_drivers * stage_id + 1, # page
                                           self.sport, # sport
                                           self.feature, # feature
                                           i, # driver index
