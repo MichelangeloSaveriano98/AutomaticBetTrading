@@ -132,8 +132,8 @@ class BetflagScraper(SiteScraper):
         time.sleep(1)
         # self.driver.find_element_by_xpath('//*[@id="btnLoginModal"]').click()
         # time.sleep(0.75)
-        # self.driver.find_element_by_xpath('//*[@id="LoginUsername"]').send_keys('dsax1998')
-        # self.driver.find_element_by_xpath('//*[@id="LoginPassword"]').send_keys('SerapoPizza@1998')
+        # self.driver.find_element_by_xpath('//*[@id="LoginUsername"]').send_keys('username')
+        # self.driver.find_element_by_xpath('//*[@id="LoginPassword"]').send_keys('password')
         # self.driver.find_element_by_xpath('//*[@id="BtnLoginNew2"]').click()
 
         # Load data
