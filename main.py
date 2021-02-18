@@ -1,7 +1,6 @@
-from betfair import BetfairBettor
-from betflag import BetflagBettor
-from bettors import create_bettor
-# drivers.switch_to.window(drivers.window_handles[1])
+# from scrapers.betflag import BetflagScraper
+from single_bet_type_analyzer import SingleBetTypeAnalyzer
+from dask.distributed import LocalCluster
 
 
 def print_data(_d):
@@ -13,11 +12,11 @@ def print_data(_d):
 
 
 if __name__ == '__main__':
-    # bettor = create_bettor('betfair')
-    # bettor = BetfairBettor(n_drivers=1, max_pages=10, feature='12', sport='tennis')
-    bettor = BetflagBettor(feature='12', sport='tennis')
-    data = bettor.get_data()
-    print_data(data)
-    # df.to_csv('./data/betfair.csv')
-    bettor.close()
-
+    cluster = LocalCluster(processes=False)
+    # cluster = None
+    analyzer = SingleBetTypeAnalyzer('calcio', '1x2', cluster=cluster)
+    try:
+        df = analyzer.analyze_bets()
+    finally:
+        analyzer.close()
+    print(df)

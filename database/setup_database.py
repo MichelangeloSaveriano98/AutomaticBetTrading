@@ -79,7 +79,7 @@ def add_matches(matches):
 
 def add_bet(match_tuple: tuple[str, str, str], site: str, sport, bet_type: str, bet_info: BetPrice):
     sql = """INSERT INTO `bets`.`bet` 
-    (`match_id`, `site`, `sport`, `bet_type`, `back_price`, `back_size`, `lay_price`, `lay_size`) 
+    (`match_id`, `site`, `bet_type`, `back_price`, `back_size`, `lay_price`, `lay_size`) 
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s);"""
     match_id = find_match_id(match_tuple)
     if match_id:

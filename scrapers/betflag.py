@@ -11,6 +11,7 @@ import pandas as pd
 from scrapers.site_scraper import SiteScraper
 from collections import defaultdict
 from utility.bet_utility import BetPrice
+from dask.distributed import Client
 
 
 def parse_1x2_button(row):
@@ -23,18 +24,18 @@ def parse_1x2_button(row):
     liquidity = row.find('div', class_='odds').find_all('span')
     if not (odds and len(odds) == 6 and liquidity and len(liquidity) == 8):
         return None
-    return {'1': BetPrice(odds[0].text,
-                               liquidity[1].text[:-1],
-                          odds[3].text,
-                               liquidity[5].text[:-1]),
-            'x': BetPrice(odds[1].text,
-                               liquidity[2].text[:-1],
-                          odds[4].text,
-                               liquidity[6].text[:-1]),
-            '2': BetPrice(odds[2].text,
-                               liquidity[3].text[:-1],
-                          odds[5].text,
-                               liquidity[7].text[:-1])}
+    return {'1': BetPrice(float(odds[0].text),
+                          float(liquidity[1].text[:-1]),
+                          float(odds[3].text),
+                          float(liquidity[5].text[:-1])),
+            'x': BetPrice(float(odds[1].text),
+                          float(liquidity[2].text[:-1]),
+                          float(odds[4].text),
+                          float(liquidity[6].text[:-1])),
+            '2': BetPrice(float(odds[2].text),
+                          float(liquidity[3].text[:-1]),
+                          float(odds[5].text),
+                          float(liquidity[7].text[:-1]))}
 
 def parse_12_button(row):
     # Find odds
@@ -46,14 +47,14 @@ def parse_12_button(row):
     liquidity = row.find('div', class_='odds').find_all('span')
     if not (odds and len(odds) == 4 and liquidity and len(liquidity) == 6):
         return {'u': None, 'o': None}
-    return {'u': BetPrice(odds[0].text,
-                               liquidity[1].text[:-1],
-                          odds[2].text,
-                               liquidity[4].text[:-1]),
-            'o': BetPrice(odds[1].text,
-                               liquidity[2].text[:-1],
-                          odds[3].text,
-                               liquidity[5].text[:-1])}
+    return {'1': BetPrice(float(odds[0].text),
+                          float(liquidity[1].text[:-1]),
+                          float(odds[2].text),
+                          float(liquidity[4].text[:-1])),
+            '2': BetPrice(float(odds[1].text),
+                          float(liquidity[2].text[:-1]),
+                          float(odds[3].text),
+                          float(liquidity[5].text[:-1]))}
 
 def parse_uo_button(row):
     # Find odds
@@ -65,14 +66,14 @@ def parse_uo_button(row):
     liquidity = row.find('div', class_='odds').find_all('span')
     if not (odds and len(odds) == 4 and liquidity and len(liquidity) == 6):
         return {'u': None, 'o': None}
-    return {'u': BetPrice(odds[0].text,
-                               liquidity[1].text[:-1],
-                          odds[2].text,
-                               liquidity[4].text[:-1]),
-            'o': BetPrice(odds[1].text,
-                               liquidity[2].text[:-1],
-                          odds[3].text,
-                               liquidity[5].text[:-1])}
+    return {'u': BetPrice(float(odds[0].text),
+                          float(liquidity[1].text[:-1]),
+                          float(odds[2].text),
+                          float(liquidity[4].text[:-1])),
+            'o': BetPrice(float(odds[1].text),
+                          float(liquidity[2].text[:-1]),
+                          float(odds[3].text),
+                          float(liquidity[5].text[:-1]))}
 
 def parse_uo1_button(row):
     bets = parse_uo_button(row)
@@ -118,7 +119,7 @@ def parse_row(row, bet_type='1x2'):
 
 
 class BetflagScraper(SiteScraper):
-    def __init__(self, sport='calcio', bet_type='1x2', n_additional_data_loaded=4):
+    def __init__(self, sport='calcio', bet_type='1x2', n_additional_data_loaded=10, cluster=None):
         self.n_additional_data_loaded = n_additional_data_loaded
         self.sport = sport
         self.bet_type = bet_type
@@ -135,6 +136,10 @@ class BetflagScraper(SiteScraper):
         # self.driver.find_element_by_xpath('//*[@id="LoginUsername"]').send_keys('username')
         # self.driver.find_element_by_xpath('//*[@id="LoginPassword"]').send_keys('password')
         # self.driver.find_element_by_xpath('//*[@id="BtnLoginNew2"]').click()
+        if cluster is not None:
+            self.client = Client(cluster)
+        else:
+            self.client = Client(processes=False)
 
         # Load data
         self.load_additional_data()
@@ -159,12 +164,17 @@ class BetflagScraper(SiteScraper):
         self.set_sport()
 
     def set_sport(self):
-        if self.sport == 'tennis':
-            self.driver.find_element_by_xpath('//*[@id="MenuScroller"]/ul/li[2]').click()
-        elif self.sport == 'basket':
-            self.driver.find_element_by_xpath('//*[@id="MenuScroller"]/ul/li[3]').click()
-        elif self.sport == 'volley':
-            self.driver.find_element_by_xpath('//*[@id="MenuScroller"]/ul/li[4]').click()
+        if self.sport == 'calcio':
+            return
+
+        if self.sport not in ['tennis', 'basket', 'volley']:
+            raise Exception(f'Sport = {self.sport} is not allowed!')
+
+        for i in range(2,5):
+            el = self.driver.find_element_by_xpath(f'//*[@id="MenuScroller"]/ul/li[{i}]')
+            if el.text.lower() == self.sport:
+                el.click()
+                return
 
     def set_bet_type(self):
         time.sleep(1)
