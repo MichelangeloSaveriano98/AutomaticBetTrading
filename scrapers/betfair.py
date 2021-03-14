@@ -13,6 +13,7 @@ from utility.bet_utility import BetPrice
 from math import ceil
 from dask.distributed import Client
 from selenium.common.exceptions import NoSuchElementException
+from utility.string_utility import clean_club_name
 
 def parse_1x2_button(row):
     # Find bet price and size
@@ -38,35 +39,28 @@ def parse_uo_button(row):
     return {'u': BetPrice(*map(float, bets[:4])),
             'o': BetPrice(*map(float, bets[4:8]))}
 
-
-def parse_uo1_button(row):
-    bets = parse_uo_button(row)
-    return {'u1.5': bets['u'], 'o1.5': bets['o']}
-
-
-def parse_uo2_button(row):
-    bets = parse_uo_button(row)
-    return {'u2.5': bets['u'], 'o2.5': bets['o']}
-
-
-def parse_uo3_button(row):
-    bets = parse_uo_button(row)
-    return {'u3.5': bets['u'], 'o3.5': bets['o']}
-
-
-def parse_uo4_button(row):
-    bets = parse_uo_button(row)
-    return {'u4.5': bets['u'], 'o4.5': bets['o']}
+def parse_uox_button(bet_type):
+    x = bet_type[2:]
+    def f(row):
+        bets = parse_uo_button(row)
+        if 'u' in bets:
+            if 'o' in bets:
+                return {'u'+x: bets['u'], 'o'+x: bets['o']}
+            return {'u'+x: bets['u']}
+        if 'o' in bets:
+            return {'o' + x: bets['o']}
+        return {}
+    return f
 
 
 def parse_row(row, bet_type):
-    bet_type_bets_parsers = {'1x2': parse_1x2_button,
-                             '12': parse_12_button,
-                             'uo1.5': parse_uo1_button,
-                             'uo2.5': parse_uo2_button,
-                             'uo3.5': parse_uo3_button,
-                             'uo4.5': parse_uo4_button}
-    if bet_type not in bet_type_bets_parsers:
+    if bet_type == '1x2':
+        bet_type_bets_parser = parse_1x2_button
+    elif bet_type == '12':
+        bet_type_bets_parser = parse_12_button
+    elif bet_type.startswith('uo'):
+        bet_type_bets_parser = parse_uox_button(bet_type)
+    else:
         raise Exception(f"bet_type {bet_type} is not allowed!")
 
     # Check if it is live
@@ -94,11 +88,13 @@ def parse_row(row, bet_type):
     # Find the clubs
     clubs = row.find('ul', class_='runners').find_all('li')
     if clubs:
-        club1 = clubs[0].text.lower()
-        club2 = clubs[1].text.lower()
+        clubs_name = [clean_club_name(clubs[0].text),
+                      clean_club_name(clubs[1].text)]
+        clubs_name.sort()
+        сlub1, сlub2 = clubs_name
 
         # Find bets price and size
-        return (club1, club2, matchDate), bet_type_bets_parsers[bet_type](row)
+        return (сlub1, сlub2, matchDate), bet_type_bets_parser(row)
 
 def parse_content(content_html, bet_type):
     soup = BeautifulSoup(content_html, 'html.parser')
@@ -107,7 +103,8 @@ def parse_content(content_html, bet_type):
     data = {}
     for row in rows:
         key, value = parse_row(row, bet_type=bet_type)
-        data[key] = value
+        if value:
+            data[key] = value
 
     return data
 
@@ -119,10 +116,12 @@ def sport_url(sport):
 
 
 class BetfairScraper(SiteScraper):
-    def __init__(self, sport='calcio', bet_type='1x2', max_pages=10, cluster=None):
+    def __init__(self, sport='calcio', bet_type='1x2', max_additional_data=-1, cluster=None):
         self.sport = sport
-        self.bet_type = bet_type
-        self.max_pages = max_pages
+        if sport == 'calcio':
+            self.bet_type = '1x2'
+        else:
+            self.bet_type = '12'
         self.url = sport_url(self.sport)
         self.refresh_period = 600 # seconds
         # Create a dask client
@@ -134,6 +133,10 @@ class BetfairScraper(SiteScraper):
         # Calculate the number of pages
         self.reset_drivers(1)
         self.n_pages = self.number_of_pages()
+        if max_additional_data == -1:
+            self.max_pages = self.n_pages
+        else:
+            self.max_pages = max_additional_data
         # Create the drivers
         self.reset_drivers(min(self.max_pages, self.n_pages))
 
@@ -142,10 +145,18 @@ class BetfairScraper(SiteScraper):
         if n_drivers == -1:
             n_drivers = len(self.drivers)
         self.drivers = [webdriver.Chrome() for i in range(n_drivers)]
-        self.setup_drivers()
+        self.setup_drivers(self.sport, self.bet_type)
 
-    def setup_drivers(self):
-        # Get the pages
+    def setup_drivers(self, sport, bet_type):
+        if sport != self.sport:
+            # If sport is different from previous sport
+            # Set sport
+            self.set_sport(sport)
+            # Set bet type
+            self.set_bet_type(bet_type)
+            # Then return
+            return
+        # Otherwise get the pages
         i=1
         for driver in self.drivers:
             driver.get(self.url + str(i))
@@ -156,16 +167,42 @@ class BetfairScraper(SiteScraper):
             WebDriverWait(driver, timeout=15).until(
                 expected_conditions.element_to_be_clickable(
                     (By.XPATH, '//*[@id="onetrust-accept-btn-handler"]'))).click()  # Cookies
-        self.set_bet_type()
+        # Then set the bet type
+        self.set_bet_type(bet_type)
 
-    def set_bet_type(self):
+    def set_sport(self, sport):
+        if sport == self.sport:
+            return
+        # If sport is different from previous sport
+        # Set new sport and url
+        self.sport = sport
+        # Set the default bet type
+        if sport == 'calcio':
+            self.bet_type = '1x2'
+        else:
+            self.bet_type = '12'
+        self.url = sport_url(self.sport)
+        # Calculate the number of pages
+        self.n_pages = self.number_of_pages()
+        # Create the drivers
+        self.reset_drivers(min(self.max_pages, self.n_pages))
+
+    def set_bet_type(self, bet_type):
+        if bet_type == self.bet_type:
+            return
+        # If bet type is different from previous bet type
+        self.bet_type = bet_type
         # If bet type is under/over
+        bet_text = ''
         if self.bet_type[:2] == 'uo':
             n_goal = self.bet_type[-3:]
-            for driver in self.drivers:
-                driver.find_elements_by_class_name('selected-option')[-1].click()
-                time.sleep(0.1)
-                driver.find_element_by_xpath(f"//span[contains(text(), 'Under/Over {n_goal} Goal')]").click()
+            bet_text = f'Under/Over {n_goal} Goal'
+        elif self.bet_type == '1x2':
+            bet_text = 'Quote mercato'
+        for driver in self.drivers:
+            driver.find_elements_by_class_name('selected-option')[-1].click()
+            time.sleep(0.1)
+            driver.find_element_by_xpath(f"//span[contains(text(), '{bet_text}')]").click()
 
     def number_of_pages(self):
         self.drivers[0].get(self.url)
@@ -192,12 +229,12 @@ class BetfairScraper(SiteScraper):
         else:
             self.n_pages = n_pages
             self.reset_drivers(min(self.max_pages, self.n_pages))
+        self.last_refresh = datetime.datetime.now()
 
     def get_data(self):
         data = {}
-        if self.last_refresh + datetime.timedelta(seconds=self.refresh_period) > datetime.datetime.now():
+        if self.last_refresh + datetime.timedelta(seconds=self.refresh_period) < datetime.datetime.now():
             self.refresh_pages()
-            self.last_refresh = datetime.datetime.now()
         # Parse the content using dask futures
         futures = [self.client.submit(parse_content,  # function
                                       driver.find_element_by_tag_name('bf-super-coupon').get_attribute('innerHTML'), # content_html

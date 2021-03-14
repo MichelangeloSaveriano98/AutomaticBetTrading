@@ -1,6 +1,7 @@
-# from scrapers.betflag import BetflagScraper
+from scrapers.betflag import BetflagScraper
 from single_bet_type_analyzer import SingleBetTypeAnalyzer
 from dask.distributed import LocalCluster
+from ensemble_bet_analyzer import EnsembleBetAnalyzer
 
 
 def print_data(_d):
@@ -12,11 +13,15 @@ def print_data(_d):
 
 
 if __name__ == '__main__':
-    cluster = LocalCluster(processes=False)
     # cluster = None
-    analyzer = SingleBetTypeAnalyzer('calcio', '1x2', cluster=cluster)
+    cluster = LocalCluster(processes=False)
+    # analyzer = EnsembleBetAnalyzer()
+    analyzer = SingleBetTypeAnalyzer('tennis', '12', cluster=cluster)
+    # scraper = BetflagScraper('tennis', '12')
     try:
         df = analyzer.analyze_bets()
+        # df = scraper.get_data()
     finally:
         analyzer.close()
+        # scraper.close()
     print(df)
